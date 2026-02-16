@@ -1,0 +1,56 @@
+openapi: 3.0.0
+info:
+  title: Todo AI Chatbot API
+  version: 1.0.0
+paths:
+  /api/{user_id}/chat:
+    post:
+      summary: Send a message to the AI agent
+      description: Stateless endpoint that processes a user message, executes MCP tools, persists history, and returns a response.
+      parameters:
+        - in: path
+          name: user_id
+          schema:
+            type: string
+          required: true
+          description: The authenticated user's ID (must match JWT).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - message
+              properties:
+                conversation_id:
+                  type: integer
+                  description: Optional ID to continue an existing conversation.
+                message:
+                  type: string
+                  description: The natural language input from the user.
+      responses:
+        '200':
+          description: Successful response from the AI.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  conversation_id:
+                    type: integer
+                    description: The ID of the active conversation.
+                  response:
+                    type: string
+                    description: The natural language reply from the AI.
+                  tool_calls:
+                    type: array
+                    items:
+                      type: object
+                      description: Details of tools executed during this turn (debug/display info).
+        '401':
+          description: Unauthorized (Invalid JWT).
+        '403':
+          description: Forbidden (User ID mismatch).
+        '422':
+          description: Validation Error.

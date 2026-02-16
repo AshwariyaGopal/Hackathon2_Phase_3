@@ -1,0 +1,49 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Chatbot API (Frontend Consumer)",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/{user_id}/chat": {
+      "post": {
+        "summary": "Send message to AI assistant",
+        "parameters": [
+          { "name": "user_id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "message": { "type": "string" },
+                  "conversation_id": { "type": "integer", "nullable": true }
+                },
+                "required": ["message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assistant response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": { "type": "integer" },
+                    "response": { "type": "string" },
+                    "tool_calls": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

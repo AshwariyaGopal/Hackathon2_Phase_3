@@ -1,0 +1,66 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Todo AI Chatbot API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/{user_id}/chat": {
+      "post": {
+        "summary": "Send a message to the AI chatbot",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "conversation_id": { "type": "integer" },
+                  "message": { "type": "string" }
+                },
+                "required": ["message"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "conversation_id": { "type": "integer" },
+                    "response": { "type": "string" },
+                    "tool_calls": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "tool": { "type": "string" },
+                          "args": { "type": "object" },
+                          "result": { "type": "object" }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Unauthorized - Missing or invalid JWT" },
+          "403": { "description": "Forbidden - User ID mismatch" }
+        }
+      }
+    }
+  }
+}
