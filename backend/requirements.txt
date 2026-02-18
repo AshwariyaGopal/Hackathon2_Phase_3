@@ -3,6 +3,6 @@ uvicorn
 sqlmodel
 python-dotenv
 pyjwt
-psycopg
+psycopg[binary]
 google-generativeai
 mcp
