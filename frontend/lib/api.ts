@@ -1,8 +1,4 @@
-// Use proxy on client to handle HttpOnly cookies, direct URL on server
-const isServer = typeof window === "undefined";
-const BASE_URL = isServer
-  ? (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api")
-  : "/api/proxy";
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
 console.log(`[API Client] Environment: ${isServer ? 'Server' : 'Client'}, Base URL: ${BASE_URL}`);
 
