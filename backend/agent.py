@@ -1,13 +1,18 @@
 import os
 import logging
 import traceback
+import asyncio
 from datetime import datetime
-import google.generativeai as genai
-from google.generativeai import protos
-from google.generativeai.types import content_types
-from google.protobuf.struct_pb2 import Struct
-from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any, Optional
+
+try:
+    import google.generativeai as genai
+    from google.generativeai import protos
+    GENAI_AVAILABLE = True
+except ImportError:
+    GENAI_AVAILABLE = False
+
+from sqlalchemy.ext.asyncio import AsyncSession
 from dotenv import load_dotenv
 
 from mcp_tools import GEMINI_TOOLS, TOOL_FUNCTIONS
@@ -17,35 +22,60 @@ logger = logging.getLogger(__name__)
 
 class GeminiAgent:
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            logger.error("GEMINI_API_KEY not set in environment")
-            raise ValueError("GEMINI_API_KEY not set")
-        
-        genai.configure(api_key=api_key)
-        
-        self.model = genai.GenerativeModel(
-            model_name="gemini-flash-latest",
-            tools=GEMINI_TOOLS,
-            system_instruction="""
-            You are TaskZen AI, a professional and highly capable AI Assistant.
-            Your goal is to help users manage their lives efficiently while also being a knowledgeable companion.
+        if not GENAI_AVAILABLE:
+            logger.error("google-generativeai package not found")
+            raise ImportError("google-generativeai package not found")
 
-            Core Capabilities:
-            1. **Basic CRUD**: You can **Add**, **Delete**, **Update**, **View**, and **Mark as Complete** any task.
-            2. **Intelligent Organization**: You handle **priorities (low, medium, high)**, **categories/labels**, and **due dates**.
-            3. **Advanced Features**: You support **Recurring Tasks** (daily, weekly, monthly).
-            4. **Proactive Management**: When a user mentions a need, suggest adding it with organization details (priority, category, etc.).
-            5. **Search & Filter**: You can search tasks by keyword or filter them by status, priority, or category.
+        try:
+            api_key = os.getenv("GEMINI_API_KEY")
+            if not api_key:
+                logger.error("GEMINI_API_KEY not set in environment")
+                raise ValueError("GEMINI_API_KEY not set")
+            
+            genai.configure(api_key=api_key)
+            
+            # Use 2.5-flash-lite (only non-zero quota model for this key)
+            model_name = "gemini-2.5-flash-lite"
+            logger.info(f"[Agent] Initializing model: {model_name}")
+            
+            self.model = genai.GenerativeModel(
+                model_name=model_name,
+                tools=GEMINI_TOOLS,
+                system_instruction=f"""
+                You are TaskZen AI. Manage tasks (Add, Delete, Update, View, Complete).
+                Today: {str(datetime.now().date())}.
+                
+                CORE RULE: You MUST use the provided tools to perform any task actions.
+                - If the user asks to add a task, call `add_task`.
+                - If they ask to see tasks, call `list_tasks`.
+                - If they ask to complete/delete, search first if you don't have the UUID.
+                
+                Do NOT just say you will do it. Call the tool first, then report the result.
+                Confirm actions clearly.
+                """
+            )
+            logger.info("[Agent] Model initialized successfully")
+        except Exception as e:
+            logger.error(f"[Agent] Initialization error: {str(e)}")
+            raise e
 
-            Operational Instructions:
-            - To update or delete a specific task by name, you MUST first use `list_tasks` with the `search` parameter to find the correct `task_id` (which is a UUID). DO NOT try to use the task name as an ID.
-            - When a task is completed, use the `complete_task` or `update_task` tool.
-            - ALWAYS confirm your actions in natural language, mentioning the specific task name and details.
-            - Be professional, concise, and helpful.
-            - Today is {date}.
-            """.format(date=str(datetime.now().date()))
-        )
+    async def _send_with_retry(self, chat, content, retries=3, delay=5):
+        """Helper to send messages with pacing."""
+        for i in range(retries):
+            try:
+                # 1 second pacing to avoid hitting "concurrent" limits
+                await asyncio.sleep(1)
+                return await chat.send_message_async(content)
+            except Exception as e:
+                err_msg = str(e).lower()
+                is_rate_limit = any(x in err_msg for x in ["quota", "429", "resource_exhausted", "limit"])
+                
+                if is_rate_limit and i < retries - 1:
+                    wait_time = delay + (i * 5)
+                    logger.warning(f"[Agent] Rate limit hit. Waiting {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                raise e
 
     async def process_message(
         self, 
@@ -55,40 +85,25 @@ class GeminiAgent:
         history: List[Dict[str, str]]
     ) -> Dict[str, Any]:
         """
-        Process a user message with history, execute tools if needed, and return the response.
+        Process user message with history and tools.
         """
-        logger.info(f"[Agent] Processing message for user {user_id}: {message[:50]}...")
+        logger.info(f"[Agent] Processing for {user_id}")
         
         try:
-            # 1. Convert history to Gemini format
             gemini_history = []
-            for h in history:
+            for h in history[-3:]: # Minimal history to stay in quota
                 role = "user" if h["role"] == "user" else "model"
-                gemini_history.append({
-                    "role": role,
-                    "parts": [h["content"]]
-                })
-                
-            chat = self.model.start_chat(history=gemini_history)
+                gemini_history.append({"role": role, "parts": [h["content"]]})
             
-            # 2. Send initial message
-            logger.info("[Agent] Sending message to Gemini...")
-            start_time = datetime.now()
-            response = await chat.send_message_async(message)
-            duration = (datetime.now() - start_time).total_seconds()
-            logger.info(f"[Agent] Gemini initial response received in {duration:.2f}s")
+            chat = self.model.start_chat(history=gemini_history)
+            response = await self._send_with_retry(chat, message)
 
             tool_calls_executed = []
-            
-            # 3. Handle Tool Calls Loop
-            max_turns = 5
+            max_turns = 2 
             turn = 0
             
             while turn < max_turns:
                 turn += 1
-                logger.info(f"[Agent] Turn {turn} processing...")
-                
-                # Extract function calls from the current response
                 function_calls = []
                 if hasattr(response, 'parts'):
                     for part in response.parts:
@@ -96,63 +111,45 @@ class GeminiAgent:
                             function_calls.append(part.function_call)
                 
                 if not function_calls:
-                    logger.info("[Agent] No more function calls, returning final response.")
                     try:
-                        text_response = response.text
+                        return {"response": response.text, "tool_calls": tool_calls_executed}
                     except (AttributeError, ValueError):
-                        text_response = "I have processed your request."
-                        
-                    return {
-                        "response": text_response or "I have processed your request.",
-                        "tool_calls": tool_calls_executed
-                    }
+                        return {"response": "I've processed that for you.", "tool_calls": tool_calls_executed}
                 
-                # Prepare responses for all function calls in this turn
                 response_parts = []
-                
                 for fc in function_calls:
                     fn_name = fc.name
                     fn_args = dict(fc.args)
+                    logger.info(f"[Agent] Tool: {fn_name}")
                     
-                    logger.info(f"[Agent] Executing tool: {fn_name}")
-                    
-                    if fn_name in TOOL_FUNCTIONS:
-                        try:
+                    try:
+                        if fn_name in TOOL_FUNCTIONS:
                             result = await TOOL_FUNCTIONS[fn_name](session, user_id, **fn_args)
-                        except Exception as e:
-                            logger.error(f"[Agent] Tool execution error: {e}")
-                            result = {"error": str(e)}
-                    else:
-                        result = {"error": f"Tool {fn_name} not found"}
+                        else:
+                            result = {"error": f"Tool {fn_name} not found"}
+                    except Exception as i_e:
+                        result = {"error": str(i_e)}
                     
-                    tool_calls_executed.append({
-                        "tool": fn_name,
-                        "args": fn_args,
-                        "result": result
-                    })
+                    tool_calls_executed.append({"tool": fn_name, "args": fn_args, "result": result})
                     
-                    # Create a proper dictionary for function response
                     response_parts.append({
                         "function_response": {
                             "name": fn_name,
-                            "response": {"result": result}
+                            "response": {"result": result} 
                         }
                     })
                 
-                # Send all function results back to Gemini
-                logger.info(f"[Agent] Sending {len(response_parts)} tool results back...")
-                response = await chat.send_message_async(response_parts)
+                # Small delay between internal steps
+                await asyncio.sleep(2)
+                response = await self._send_with_retry(chat, {"parts": response_parts})
             
             return {
-                "response": "I processed your request but got stuck in a multi-turn tool loop.",
+                "response": "I've performed several actions but reached my speed limit.",
                 "tool_calls": tool_calls_executed
             }
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"[Agent] CRITICAL ERROR: {error_msg}")
-            logger.error(traceback.format_exc())
-            
+            logger.error(f"[Agent] Error: {error_msg}")
             if "quota" in error_msg.lower() or "429" in error_msg:
-                return {"response": "I'm hitting my rate limit (quota exceeded). Please wait a minute before trying again.", "tool_calls": []}
-                
-            return {"response": f"I encountered a brain error: {error_msg[:100]}", "tool_calls": []}
+                return {"response": "I'm currently hitting a rate limit. Please wait 30 seconds.", "tool_calls": []}
+            return {"response": f"I encountered an issue: {error_msg[:50]}", "tool_calls": []}

@@ -96,7 +96,7 @@ class TaskRead(TaskBase):
 # Chatbot Models
 
 class Conversation(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True, sa_column_kwargs={"autoincrement": True})
     user_id: str = Field(index=True)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -104,7 +104,7 @@ class Conversation(SQLModel, table=True):
     messages: List["Message"] = Relationship(back_populates="conversation")
 
 class Message(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: Optional[int] = Field(default=None, primary_key=True, sa_column_kwargs={"autoincrement": True})
     conversation_id: int = Field(foreign_key="conversation.id", index=True)
     user_id: str = Field(index=True)
     role: str # "user", "assistant"

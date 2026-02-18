@@ -14,6 +14,11 @@ export function useChat() {
   const searchParams = useSearchParams();
   const queryId = searchParams.get("id");
 
+  // User-specific storage key to prevent "Access denied" between accounts
+  const STORAGE_KEY = session?.user?.id 
+    ? `todo-ai-conversation-id-${session.user.id}` 
+    : "todo-ai-conversation-id-guest";
+
   const [conversation, setConversation] = useState<ClientConversation>({
     conversation_id: null,
     messages: [],
@@ -22,13 +27,23 @@ export function useChat() {
 
   // Load conversation ID from storage or query
   useEffect(() => {
+    if (isPending || !session?.user?.id) return;
+
     const savedId = localStorage.getItem(STORAGE_KEY);
     const initialId = queryId ? parseInt(queryId) : savedId ? parseInt(savedId) : null;
     
     if (initialId) {
-      setConversation(prev => ({ ...prev, conversation_id: initialId }));
+      setConversation(prev => ({ 
+        ...prev, 
+        conversation_id: initialId,
+        // Reset messages if we switch to a different conversation ID
+        messages: prev.conversation_id !== initialId ? [] : prev.messages 
+      }));
+    } else {
+      // Clear if no ID for this user
+      setConversation(prev => ({ ...prev, conversation_id: null, messages: [] }));
     }
-  }, [queryId]);
+  }, [queryId, STORAGE_KEY, isPending, session?.user?.id]);
 
   // Persist conversation ID
   useEffect(() => {

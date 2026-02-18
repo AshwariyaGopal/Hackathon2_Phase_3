@@ -44,9 +44,13 @@ async def get_current_user(
         raw_token = token.split(".")[0]
 
     # 1. Query the Session table
-    statement = select(DbSession).where(DbSession.token == raw_token)
-    result = await session.execute(statement)
-    db_session_record = result.scalar_one_or_none()
+    try:
+        statement = select(DbSession).where(DbSession.token == raw_token)
+        result = await session.execute(statement)
+        db_session_record = result.scalar_one_or_none()
+    except Exception as e:
+        print(f"DEBUG: Database error during session lookup: {e}")
+        raise HTTPException(status_code=503, detail="Database connection error. Please try again.")
     
     if not db_session_record:
         print("DEBUG: Session not found in database")
@@ -63,9 +67,13 @@ async def get_current_user(
         raise HTTPException(status_code=401, detail="Session expired")
         
     # 3. Get the User
-    user_statement = select(User).where(User.id == db_session_record.user_id)
-    user_result = await session.execute(user_statement)
-    user = user_result.scalar_one_or_none()
+    try:
+        user_statement = select(User).where(User.id == db_session_record.user_id)
+        user_result = await session.execute(user_statement)
+        user = user_result.scalar_one_or_none()
+    except Exception as e:
+        print(f"DEBUG: Database error during user lookup: {e}")
+        raise HTTPException(status_code=503, detail="Database connection error. Please try again.")
     
     if not user:
         print("DEBUG: User not found for session")

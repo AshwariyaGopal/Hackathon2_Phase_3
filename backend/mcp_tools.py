@@ -18,7 +18,7 @@ async def add_task(
     is_recurring: bool = False,
     recurrence_pattern: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Creates a new todo item with optional priority, category, and due date."""
+    """Creates a new todo item."""
     parsed_due_date = None
     if due_date:
         try:
@@ -42,9 +42,7 @@ async def add_task(
     return {
         "task_id": str(db_task.id),
         "status": "created",
-        "title": db_task.title,
-        "priority": db_task.priority,
-        "category": db_task.category
+        "title": db_task.title
     }
 
 async def list_tasks(
@@ -57,7 +55,7 @@ async def list_tasks(
     sort_by: str = "created_at",
     sort_order: str = "desc"
 ) -> List[Dict[str, Any]]:
-    """Retrieves tasks with advanced filtering and sorting options."""
+    """Retrieves tasks."""
     statement = select(Task).where(Task.user_id == user_id)
     
     if status == "pending":
@@ -76,7 +74,6 @@ async def list_tasks(
             (Task.title.ilike(f"%{search}%")) | (Task.description.ilike(f"%{search}%"))
         )
     
-    # Sorting
     order_col = getattr(Task, sort_by, Task.created_at)
     if sort_order == "desc":
         statement = statement.order_by(order_col.desc())
@@ -86,19 +83,18 @@ async def list_tasks(
     results = await session.execute(statement)
     tasks = results.scalars().all()
     
-    return [
-        {
-            "id": str(t.id),
-            "title": t.title,
-            "description": t.description,
-            "completed": t.is_completed,
-            "priority": t.priority,
-            "category": t.category,
-            "due_date": t.due_date.isoformat() if t.due_date else None,
-            "created_at": t.created_at.isoformat()
-        }
-        for t in tasks
-    ]
+    return {
+        "tasks": [
+            {
+                "id": str(t.id),
+                "title": t.title,
+                "completed": t.is_completed,
+                "priority": t.priority,
+                "category": t.category
+            }
+            for t in tasks
+        ]
+    }
 
 async def complete_task(session: AsyncSession, user_id: str, task_id: str) -> Dict[str, Any]:
     """Marks a task as completed."""
@@ -120,14 +116,10 @@ async def complete_task(session: AsyncSession, user_id: str, task_id: str) -> Di
     session.add(db_task)
     await session.commit()
     await session.refresh(db_task)
-    return {
-        "task_id": str(db_task.id),
-        "status": "completed",
-        "title": db_task.title
-    }
+    return {"status": "completed", "title": db_task.title}
 
 async def delete_task(session: AsyncSession, user_id: str, task_id: str) -> Dict[str, Any]:
-    """Permanently removes a task."""
+    """Removes a task."""
     try:
         uuid_id = UUID(task_id)
     except ValueError:
@@ -142,11 +134,7 @@ async def delete_task(session: AsyncSession, user_id: str, task_id: str) -> Dict
         
     await session.delete(db_task)
     await session.commit()
-    return {
-        "task_id": str(db_task.id),
-        "status": "deleted",
-        "title": db_task.title
-    }
+    return {"status": "deleted", "task_id": task_id}
 
 async def update_task(
     session: AsyncSession, 
@@ -159,7 +147,7 @@ async def update_task(
     due_date: Optional[str] = None,
     is_completed: Optional[bool] = None
 ) -> Dict[str, Any]:
-    """Modifies an existing task including new fields."""
+    """Modifies a task."""
     try:
         uuid_id = UUID(task_id)
     except ValueError:
@@ -189,44 +177,32 @@ async def update_task(
     session.add(db_task)
     await session.commit()
     await session.refresh(db_task)
-    return {
-        "task_id": str(db_task.id),
-        "status": "updated",
-        "title": db_task.title
-    }
+    return {"status": "updated", "title": db_task.title}
 
 # --- Gemini Tool Definitions ---
-
+# Simplified format which is most reliable
 GEMINI_TOOLS = [
     {
         "name": "add_task",
-        "description": "Creates a new todo item. Use ISO format for due_date.",
+        "description": "Creates a new todo item.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "title": {"type": "STRING", "description": "The task content."},
-                "description": {"type": "STRING", "description": "Additional details."},
+                "title": {"type": "STRING"},
                 "priority": {"type": "STRING", "enum": ["low", "medium", "high"]},
-                "category": {"type": "STRING", "description": "e.g. Work, Home, Personal"},
-                "due_date": {"type": "STRING", "description": "ISO format date string."},
-                "is_recurring": {"type": "BOOLEAN"},
-                "recurrence_pattern": {"type": "STRING", "enum": ["daily", "weekly", "monthly"]}
+                "category": {"type": "STRING"},
+                "due_date": {"type": "STRING"}
             },
             "required": ["title"]
         }
     },
     {
         "name": "list_tasks",
-        "description": "Retrieves tasks with filtering and sorting.",
+        "description": "Retrieves tasks.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "status": {"type": "STRING", "enum": ["all", "pending", "completed"]},
-                "priority": {"type": "STRING", "enum": ["low", "medium", "high"]},
-                "category": {"type": "STRING"},
-                "search": {"type": "STRING", "description": "Search in title or description"},
-                "sort_by": {"type": "STRING", "enum": ["created_at", "due_date", "priority", "title"]},
-                "sort_order": {"type": "STRING", "enum": ["asc", "desc"]}
+                "search": {"type": "STRING"}
             }
         }
     },
@@ -236,7 +212,7 @@ GEMINI_TOOLS = [
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "task_id": {"type": "STRING", "description": "ID of the task to complete."}
+                "task_id": {"type": "STRING"}
             },
             "required": ["task_id"]
         }
@@ -247,7 +223,7 @@ GEMINI_TOOLS = [
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "task_id": {"type": "STRING", "description": "ID of the task to delete."}
+                "task_id": {"type": "STRING"}
             },
             "required": ["task_id"]
         }
@@ -260,18 +236,15 @@ GEMINI_TOOLS = [
             "properties": {
                 "task_id": {"type": "STRING"},
                 "title": {"type": "STRING"},
-                "description": {"type": "STRING"},
                 "priority": {"type": "STRING", "enum": ["low", "medium", "high"]},
-                "category": {"type": "STRING"},
-                "due_date": {"type": "STRING"},
-                "is_completed": {"type": "BOOLEAN"}
+                "category": {"type": "STRING"}
             },
             "required": ["task_id"]
         }
     }
 ]
 
-# Map tool names to functions for easy lookup execution
+# Map tool names to functions
 TOOL_FUNCTIONS = {
     "add_task": add_task,
     "list_tasks": list_tasks,
