@@ -1,4 +1,4 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const BASE_URL = "/api/backend";
 const isServer = typeof window === "undefined";
 
 console.log(`[API Client] Environment: ${isServer ? 'Server' : 'Client'}, Base URL: ${BASE_URL}`);
@@ -19,40 +19,8 @@ export async function apiClient<T = unknown>(
   const requestId = Math.random().toString(36).substring(7);
   console.log(`[API Request ${requestId}] START: ${endpoint}`);
 
-  // Handle Auth Token
-  if (requireAuth) {
-    let token: string | undefined;
-    
-    // Check if we are on the server
-    if (typeof window === "undefined") {
-      const { cookies } = await import("next/headers");
-      const cookieStore = await cookies();
-      token = cookieStore.get("better-auth.session_token")?.value || 
-              cookieStore.get("__Secure-better-auth.session_token")?.value;
-    } else {
-      // On client, try multiple cookie names used by Better Auth
-      const getCookie = (name: string) => {
-        const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-        return match ? match[2] : undefined;
-      };
-      
-      token = getCookie("better-auth.session_token") || 
-              getCookie("__Secure-better-auth.session_token") ||
-              getCookie("better-auth.session_token.production");
-    }
-
-    if (token) {
-      console.log(`[API Request ${requestId}] SUCCESS: Token found, adding to Authorization header.`);
-      // IMPORTANT: Explicitly add to headers for cross-domain requests
-      headers["Authorization"] = `Bearer ${token}`;
-    } else {
-      console.error(`[API Request ${requestId}] ERROR: No session token found in any cookie!`);
-    }
-
-    // Force CORS headers if needed
-    options.mode = "cors";
-    options.credentials = "include";
-  }
+  // In this proxy setup, we don't need to manually set the Authorization header
+  // because the Proxy route in Next.js will read the cookie and add it.
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 second timeout
