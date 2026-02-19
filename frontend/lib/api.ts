@@ -1,4 +1,5 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+const isServer = typeof window === "undefined";
 
 console.log(`[API Client] Environment: ${isServer ? 'Server' : 'Client'}, Base URL: ${BASE_URL}`);
 
@@ -80,7 +81,7 @@ export async function apiClient<T = unknown>(
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Request timed out after 60 seconds. Please check your connection.');
+      throw new Error('Request timed out after 120 seconds. Please check your connection.');
     }
     throw error;
   }
