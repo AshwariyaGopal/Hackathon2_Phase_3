@@ -198,11 +198,11 @@ GEMINI_TOOLS = [
     },
     {
         "name": "list_tasks",
-        "description": "Retrieves tasks.",
+        "description": "Retrieves tasks. Use this tool to find a task's ID by searching for its title if you don't have the UUID.",
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "search": {"type": "STRING"}
+                "search": {"type": "STRING", "description": "Search for a task by title or description to find its ID."}
             }
         }
     },
