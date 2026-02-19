@@ -27,6 +27,10 @@ export const auth = betterAuth({
     // If pool is null, this will throw a clear error instead of connecting to 127.0.0.1
     database: pool as any, 
     secret: process.env.BETTER_AUTH_SECRET,
+    // Disable encryption to prevent "Failed to decrypt private key" errors
+    encryption: {
+        enabled: false
+    },
     debug: true,
     emailAndPassword: {
         enabled: true,
