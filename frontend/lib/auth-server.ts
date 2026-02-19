@@ -27,6 +27,7 @@ pool.on('error', (err) => {
 export const auth = betterAuth({
     database: pool,
     secret: process.env.BETTER_AUTH_SECRET,
+    debug: true, // This will show exact errors in Vercel Logs
     onNodeError: (error: any) => {
         console.error("Better Auth Node Error:", error);
     },
