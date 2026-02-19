@@ -2,21 +2,30 @@ import { betterAuth } from "better-auth";
 import { jwt } from "better-auth/plugins";
 import { Pool } from "pg";
 
-// Safe pool initialization
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL?.trim(),
+const dbUrl = process.env.DATABASE_URL?.trim();
+
+if (!dbUrl) {
+  console.error("❌ CRITICAL: DATABASE_URL is empty or undefined in Vercel environment variables!");
+}
+
+// Only create the pool if we have a URL, otherwise let it fail clearly
+const pool = dbUrl ? new Pool({
+  connectionString: dbUrl,
   ssl: {
     rejectUnauthorized: false
   },
   max: 10,
-});
+}) : null;
 
-pool.on('error', (err) => {
-  console.error('DATABASE_POOL_ERROR:', err);
-});
+if (pool) {
+  pool.on('error', (err) => {
+    console.error('DATABASE_POOL_ERROR:', err);
+  });
+}
 
 export const auth = betterAuth({
-    database: pool,
+    // If pool is null, this will throw a clear error instead of connecting to 127.0.0.1
+    database: pool as any, 
     secret: process.env.BETTER_AUTH_SECRET,
     debug: true,
     emailAndPassword: {
