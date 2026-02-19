@@ -27,7 +27,6 @@ pool.on('error', (err) => {
 export const auth = betterAuth({
     database: pool,
     secret: process.env.BETTER_AUTH_SECRET,
-    // ... rest of config
     onNodeError: (error: any) => {
         console.error("Better Auth Node Error:", error);
     },
