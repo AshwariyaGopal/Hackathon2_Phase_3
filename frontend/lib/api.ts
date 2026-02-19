@@ -42,10 +42,16 @@ export async function apiClient<T = unknown>(
     }
 
     if (token) {
+      console.log(`[API Request ${requestId}] SUCCESS: Token found, adding to Authorization header.`);
+      // IMPORTANT: Explicitly add to headers for cross-domain requests
       headers["Authorization"] = `Bearer ${token}`;
     } else {
-        // console.warn("API Client: No token found in cookies.");
+      console.error(`[API Request ${requestId}] ERROR: No session token found in any cookie!`);
     }
+
+    // Force CORS headers if needed
+    options.mode = "cors";
+    options.credentials = "include";
   }
 
   const controller = new AbortController();
@@ -63,19 +69,20 @@ export async function apiClient<T = unknown>(
     console.log(`[API Request ${requestId}] DONE: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
-      if (response.status === 401 && requireAuth) {
-        // Optional: Redirect to login or handle session expiration
-        // window.location.href = "/login";
-      }
-      
       let errorMessage = `API Error: ${response.statusText}`;
       try {
         const errorData = await response.json();
-        errorMessage = errorData.detail || errorData.message || errorMessage;
+        // Handle FastAPI validation errors (422)
+        if (response.status === 422 && errorData.detail) {
+          errorMessage = `Validation Error: ${JSON.stringify(errorData.detail)}`;
+        } else {
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        }
       } catch {
         // ignore json parse error
       }
       
+      console.error(`[API Request ${requestId}] FAILED:`, errorMessage);
       throw new Error(errorMessage);
     }
 
