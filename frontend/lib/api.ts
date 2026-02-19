@@ -27,12 +27,18 @@ export async function apiClient<T = unknown>(
     if (typeof window === "undefined") {
       const { cookies } = await import("next/headers");
       const cookieStore = await cookies();
-      token = cookieStore.get("better-auth.session_token")?.value || cookieStore.get("__Secure-better-auth.session_token")?.value;
+      token = cookieStore.get("better-auth.session_token")?.value || 
+              cookieStore.get("__Secure-better-auth.session_token")?.value;
     } else {
-      // On client, we can try to get it from cookies directly or session
-      // Robust cookie parsing
-      const match = document.cookie.match(new RegExp('(^| )(?:__Secure-)?better-auth.session_token=([^;]+)'));
-      token = match ? match[2] : undefined;
+      // On client, try multiple cookie names used by Better Auth
+      const getCookie = (name: string) => {
+        const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+        return match ? match[2] : undefined;
+      };
+      
+      token = getCookie("better-auth.session_token") || 
+              getCookie("__Secure-better-auth.session_token") ||
+              getCookie("better-auth.session_token.production");
     }
 
     if (token) {
